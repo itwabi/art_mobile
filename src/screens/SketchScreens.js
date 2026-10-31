@@ -1,6 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, Pressable, StyleSheet, Image, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Screen, Button, Card, Label, Select, Placeholder } from '../components/ui';
+import { PhotoViewer } from '../components/photos';
+import { pickPhotos } from '../photos';
+import { useApp } from '../state';
 import { useTheme, useStyles, radius } from '../theme';
 import { categories, timeOptions, countOptions, orderOptions } from '../data/mock';
 import { buildPlan } from '../plan';
@@ -13,7 +17,7 @@ export function SketchSettings({ navigation }) {
   const [picked, setPicked] = useState(['Позы']); // порядок = порядок выбора
   const toggle = (c) => setPicked((p) => (p.includes(c) ? p.filter((x) => x !== c) : [...p, c]));
 
-  const start = () => navigation.navigate('SketchSession', { plan: buildPlan(picked, count, order), seconds });
+  const start = () => navigation.navigate('SketchSession', { plan: buildPlan(picked, count, order), seconds, categories: picked });
 
   return (
     <Screen scroll>
@@ -51,13 +55,20 @@ const fmt = (sec) => `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(
 
 export function SketchSession({ navigation, route }) {
   const s = useStyles(makeStyles);
-  const { plan, seconds } = route.params;
+  const { plan, seconds, categories = [] } = route.params;
   const [i, setI] = useState(0);
   const [left, setLeft] = useState(seconds);
+  const startedAt = useRef(Date.now());
 
-  const finish = () => navigation.replace('SketchFinish', { count: i + 1, seconds });
+  const done = (count) => navigation.replace('SketchFinish', {
+    count,
+    seconds,
+    categories,
+    elapsed: Math.round((Date.now() - startedAt.current) / 1000),
+  });
+  const finish = () => done(i + 1);
   const next = () => {
-    if (i + 1 >= plan.length) return navigation.replace('SketchFinish', { count: plan.length, seconds });
+    if (i + 1 >= plan.length) return done(plan.length);
     setI(i + 1);
     setLeft(seconds);
   };
@@ -86,21 +97,102 @@ export function SketchSession({ navigation, route }) {
   );
 }
 
+const plural = (n) => {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return `${n} набросок`;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return `${n} наброска`;
+  return `${n} набросков`;
+};
+
 export function SketchFinish({ navigation, route }) {
+  const s = useStyles(makeStyles);
   const { colors } = useTheme();
-  const { count = 0, seconds = 0 } = route.params ?? {};
-  const mins = Math.max(1, Math.round((count * seconds) / 60));
+  const { loggedIn, addAlbum } = useApp();
+  const { count = 0, seconds = 0, elapsed, categories = [] } = route.params ?? {};
+  const spent = elapsed ?? count * seconds;
+  const time = spent < 60 ? 'меньше минуты' : `около ${Math.round(spent / 60)} мин`;
+
+  const [items, setItems] = useState([]);      // выбранные фото: { uri, sent }
+  const [status, setStatus] = useState(null);  // { text, error, needLogin, toWorks }
+  const [viewer, setViewer] = useState(null);  // номер открытого фото
+
+  const pending = items.filter((it) => !it.sent);
+
+  // после входа в аккаунт убираем предупреждение «войдите в профиль»
+  useEffect(() => {
+    if (loggedIn) setStatus((st) => (st && st.needLogin ? null : st));
+  }, [loggedIn]);
+
+  const pick = async () => {
+    if (!loggedIn) {
+      return setStatus({ text: 'Нельзя прикрепить фото, пока вы не вошли в профиль.', error: true, needLogin: true });
+    }
+    const uris = await pickPhotos();
+    if (!uris.length) return;
+    setItems((p) => [...p, ...uris.map((uri) => ({ uri, sent: false }))]);
+    setStatus(null);
+  };
+  const remove = (i) => {
+    setItems((p) => p.filter((_, k) => k !== i));
+    setStatus(null);
+  };
+  const send = () => {
+    if (!loggedIn) return pick();
+    addAlbum(pending.map((it) => it.uri), categories);
+    setItems((p) => p.map((it) => ({ ...it, sent: true })));
+    setStatus({ text: 'Фото сохранено. Его можно посмотреть в «Ваших работах».', toWorks: true });
+  };
+
   return (
-    <Screen>
+    <Screen scroll>
       <Card style={{ alignItems: 'center', paddingVertical: 28 }}>
         <Text style={{ fontSize: 26, fontWeight: '800', color: colors.ink }}>Тренировка окончена</Text>
-        <Text style={{ color: colors.muted, marginTop: 6 }}>{count} набросков · около {mins} мин</Text>
+        <Text style={{ color: colors.muted, marginTop: 6 }}>{plural(count)} · {time}</Text>
       </Card>
       <View style={{ flex: 1 }} />
       <View style={{ gap: 12 }}>
-        <Button title="Прикрепить фото" icon="attach" />
+        {items.length === 0 ? (
+          <Button title="Прикрепить фото" icon="attach" onPress={pick} />
+        ) : (
+          <Card style={{ gap: 12 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
+              {items.map((it, i) => (
+                <View key={`${it.uri}-${i}`} style={s.thumbWrap}>
+                  <Pressable onPress={() => setViewer(i)}>
+                    <Image source={{ uri: it.uri }} style={[s.thumb, it.sent && { opacity: 0.55 }]} />
+                  </Pressable>
+                  {it.sent ? (
+                    <View style={s.sentTag}><Text style={s.sentText}>Прикреплено</Text></View>
+                  ) : (
+                    <Pressable accessibilityLabel="Убрать фото" onPress={() => remove(i)} style={s.removeBtn}>
+                      <Ionicons name="close" size={14} color="#fff" />
+                    </Pressable>
+                  )}
+                </View>
+              ))}
+              <Pressable accessibilityLabel="Добавить ещё фото" onPress={pick} style={s.addTile}>
+                <Ionicons name="add" size={28} color={colors.muted} />
+              </Pressable>
+            </ScrollView>
+            {pending.length > 0 && (
+              <Button title={pending.length > 1 ? `Прикрепить (${pending.length})` : 'Прикрепить'} variant="primary" onPress={send} />
+            )}
+          </Card>
+        )}
+        {status && !(status.needLogin && loggedIn) && (
+          <View style={{ gap: 10, alignItems: 'flex-start' }}>
+            <Text style={{ color: status.error ? colors.accent : colors.muted, fontSize: 15, fontWeight: '600' }}>{status.text}</Text>
+            {status.needLogin && (
+              <Button title="Войти в аккаунт" variant="primary" style={s.small} onPress={() => navigation.navigate('Profile')} />
+            )}
+            {status.toWorks && (
+              <Button title="Открыть «Ваши работы»" style={s.small} onPress={() => navigation.navigate('Profile', { screen: 'MyWorks' })} />
+            )}
+          </View>
+        )}
         <Button title="Выйти к настройкам" variant="primary" onPress={() => navigation.popToTop()} />
       </View>
+      <PhotoViewer visible={viewer !== null} images={items.map((it) => it.uri)} index={viewer ?? 0} onClose={() => setViewer(null)} />
     </Screen>
   );
 }
@@ -116,4 +208,11 @@ const makeStyles = (c) => StyleSheet.create({
   timerText: { color: c.bg, fontSize: 34, fontWeight: '800', fontVariant: ['tabular-nums'] },
   progress: { height: 6, alignSelf: 'stretch', backgroundColor: c.border, borderRadius: 3, marginTop: 14, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: c.accent },
+  thumbWrap: { width: 76, height: 76 },
+  thumb: { width: 76, height: 76, borderRadius: radius.s, backgroundColor: c.placeholder },
+  removeBtn: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },
+  sentTag: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', borderBottomLeftRadius: radius.s, borderBottomRightRadius: radius.s, paddingVertical: 2 },
+  sentText: { color: '#fff', fontSize: 10, fontWeight: '700', textAlign: 'center' },
+  addTile: { width: 76, height: 76, borderRadius: radius.s, borderWidth: 1.5, borderStyle: 'dashed', borderColor: c.border, alignItems: 'center', justifyContent: 'center' },
+  small: { paddingVertical: 9, paddingHorizontal: 14 },
 });

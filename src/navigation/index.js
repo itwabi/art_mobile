@@ -8,7 +8,7 @@ import { useTheme } from '../theme';
 import { SketchSettings, SketchSession, SketchFinish } from '../screens/SketchScreens';
 import { GenerateSetup, GenerateResult } from '../screens/GenerateScreens';
 import { ChallengeGallery, ChallengeList, ChallengeDetail } from '../screens/ChallengeScreens';
-import { ProfileHome, AppSettings, MyChallenges, SavedGenerations, MyWorks } from '../screens/ProfileScreens';
+import { ProfileHome, AppSettings, MyChallenges, SavedGenerations, MyWorks, MyWork } from '../screens/ProfileScreens';
 
 const Tab = createBottomTabNavigator();
 
@@ -53,6 +53,7 @@ const ProfileStack = mk([
   ['MyChallenges', MyChallenges, 'Ваши челленджи'],
   ['SavedGenerations', SavedGenerations, 'Сохраненные генерации'],
   ['MyWorks', MyWorks, 'Ваши работы'],
+  ['MyWork', MyWork, 'Работа'],
 ]);
 
 const tabs = [

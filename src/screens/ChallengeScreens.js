@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Screen, Button, Card, Label } from '../components/ui';
+import { Screen, Button, Card, Label, Select } from '../components/ui';
+import { PhotoViewer } from '../components/photos';
+import { pickPhotos } from '../photos';
 import { useTheme, useStyles, radius } from '../theme';
 import { useApp } from '../state';
 import { calendarChallenges, permanentChallenges, allChallenges } from '../data/mock';
@@ -57,32 +59,116 @@ export function ChallengeList({ navigation, route }) {
   );
 }
 
+const PREVIEW = 8; // сколько тем показываем, пока список свёрнут
+
 export function ChallengeDetail({ navigation, route }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
-  const { loggedIn, joined, join, leave } = useApp();
+  const { loggedIn, joined, join, leave, works, setChallengeWork } = useApp();
   const [warn, setWarn] = useState(false);
+  const [showAll, setShowAll] = useState(false);   // развёрнут ли список тем
+  const [panel, setPanel] = useState(false);       // открыта ли форма «Прикрепить фото»
+  const [topic, setTopic] = useState(null);        // тема, выбранная в форме (null = первая без фото)
+  const [photo, setPhoto] = useState(null);        // выбранное фото
+  const [status, setStatus] = useState(null);      // { text, error }
+  const [viewer, setViewer] = useState(null);      // фото, открытое на весь экран
   const c = allChallenges.find((x) => x.id === route.params?.id) ?? allChallenges[0];
   const isIn = loggedIn && joined.includes(c.id);
   const onJoin = () => (loggedIn ? join(c.id) : setWarn(true)); // без входа участвовать нельзя
+
+  const mine = works.filter((w) => w.kind === 'challenge' && w.challengeId === c.id);
+  const workOf = (k) => mine.find((w) => w.topicIndex === k);
+  const firstFree = () => {
+    const k = c.topics.findIndex((_, i) => !workOf(i));
+    return k < 0 ? 0 : k;
+  };
+  const selected = topic ?? firstFree();
+
+  const openPanel = (k) => {
+    setPanel(true);
+    setTopic(k);
+    setStatus(null);
+  };
+  const choose = async () => {
+    const [uri] = await pickPhotos({ multiple: false });
+    if (uri) { setPhoto(uri); setStatus(null); }
+  };
+  const upload = () => {
+    if (!photo) return setStatus({ text: 'Сначала выберите фото', error: true });
+    setChallengeWork({ challengeId: c.id, challengeTitle: c.title, topicIndex: selected, topicTitle: c.topics[selected], uri: photo });
+    setStatus({ text: `Фото прикреплено к теме «${c.topics[selected]}»`, error: false });
+    setPhoto(null);
+    setTopic(null);
+  };
+  const onLeave = () => {
+    leave(c.id);
+    setPanel(false);
+    setStatus(null);
+  };
+
+  const rows = showAll ? c.topics : c.topics.slice(0, PREVIEW);
+
   return (
     <Screen scroll>
       <Text style={s.h1}>{c.title}</Text>
       <Card><Label>ОПИСАНИЕ И УСЛОВИЯ</Label><Text style={{ fontSize: 16, color: colors.ink, lineHeight: 23 }}>{c.desc}</Text></Card>
       <Card style={{ gap: 4 }}>
         <Label>СПИСОК ТЕМ</Label>
-        {c.topics.slice(0, 8).map((t, k) => (
-          <View key={k} style={s.topic}>
-            <Text style={{ flex: 1, fontSize: 15, color: colors.ink }}>{t}</Text>
-            {isIn ? <Ionicons name="image-outline" size={20} color={colors.muted} /> : null}
+        {rows.map((t, k) => {
+          const w = isIn ? workOf(k) : null;
+          return (
+            <View key={k} style={s.topic}>
+              <Text style={{ flex: 1, fontSize: 15, color: colors.ink }}>{t}</Text>
+              {w ? (
+                <Pressable accessibilityLabel="Открыть фото" onPress={() => setViewer(w.images[0].uri)}>
+                  <Image source={{ uri: w.images[0].uri }} style={s.topicThumb} />
+                </Pressable>
+              ) : isIn ? (
+                <Pressable accessibilityLabel="Прикрепить фото к теме" hitSlop={8} onPress={() => openPanel(k)}>
+                  <Ionicons name="image-outline" size={22} color={colors.muted} />
+                </Pressable>
+              ) : null}
+            </View>
+          );
+        })}
+        {c.topics.length > PREVIEW && (
+          <View style={{ alignItems: 'flex-start', marginTop: 8 }}>
+            <Button
+              title={showAll ? 'Свернуть список' : `Показать все темы (${c.topics.length})`}
+              style={s.noticeBtn}
+              onPress={() => setShowAll(!showAll)}
+            />
           </View>
-        ))}
-        <Text style={{ color: colors.muted, marginTop: 6 }}>… и ещё {c.topics.length - 8}</Text>
+        )}
       </Card>
       {isIn ? (
         <View style={{ gap: 12 }}>
-          <Button title="Прикрепить фото" icon="attach" />
-          <Button title="Отменить участие" variant="danger" onPress={() => leave(c.id)} />
+          <Button title="Прикрепить фото" icon="attach" onPress={() => { setPanel(!panel); setStatus(null); }} />
+          {panel && (
+            <Card style={{ gap: 14 }}>
+              <Select
+                label="Тема"
+                value={selected}
+                options={c.topics.map((t, k) => ({ value: k, label: `${workOf(k) ? '✓ ' : ''}${t}` }))}
+                onChange={(v) => { setTopic(v); setStatus(null); }}
+              />
+              <View style={{ gap: 10 }}>
+                <Label>Фото рисунка</Label>
+                {photo ? (
+                  <Pressable onPress={() => setViewer(photo)}>
+                    <Image source={{ uri: photo }} style={s.preview} resizeMode="cover" />
+                  </Pressable>
+                ) : null}
+                <Button title={photo ? 'Выбрать другое фото' : 'Выбрать фото'} icon="image-outline" onPress={choose} />
+              </View>
+              <Button title="Загрузить" variant="primary" onPress={upload} />
+              {status ? (
+                <Text style={{ color: status.error ? colors.accent : colors.muted, fontSize: 15, fontWeight: '600' }}>{status.text}</Text>
+              ) : null}
+              <Text style={{ color: colors.muted, fontSize: 14 }}>Если к теме уже есть фото, новое заменит его.</Text>
+            </Card>
+          )}
+          <Button title="Отменить участие" variant="danger" onPress={onLeave} />
         </View>
       ) : (
         <View style={{ gap: 12 }}>
@@ -98,6 +184,7 @@ export function ChallengeDetail({ navigation, route }) {
           <Button title="Участвовать" variant="primary" onPress={onJoin} />
         </View>
       )}
+      <PhotoViewer visible={viewer !== null} images={viewer ? [viewer] : []} onClose={() => setViewer(null)} />
     </Screen>
   );
 }
@@ -114,4 +201,6 @@ const makeStyles = (c) => StyleSheet.create({
   notice: { flexDirection: 'row', gap: 12, alignItems: 'flex-start', padding: 14, borderRadius: radius.m, borderWidth: 1.5, borderColor: c.accent, backgroundColor: c.accentSoft },
   noticeBtn: { paddingVertical: 9, paddingHorizontal: 14 },
   topic: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border },
+  topicThumb: { width: 38, height: 38, borderRadius: 8, backgroundColor: c.placeholder },
+  preview: { width: '100%', height: 180, borderRadius: radius.m, backgroundColor: c.placeholder },
 });

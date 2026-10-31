@@ -81,20 +81,42 @@ export function Select({ label, value, options, onChange, style }) {
         <Pressable style={s.backdrop} onPress={() => setOpen(false)}>
           <Pressable style={s.sheet} onPress={() => {}}>
             <Text style={s.sheetTitle}>{label}</Text>
-            {options.map((o) => (
-              <Pressable
-                key={String(o.value)}
-                onPress={() => { onChange(o.value); setOpen(false); }}
-                style={({ pressed }) => [s.option, pressed && { backgroundColor: colors.accentSoft }]}
-              >
-                <Text style={[s.optionText, o.value === value && { color: colors.accent, fontWeight: '800' }]}>{o.label}</Text>
-                {o.value === value ? <Ionicons name="checkmark" size={20} color={colors.accent} /> : null}
-              </Pressable>
-            ))}
+            <ScrollView>
+              {options.map((o) => (
+                <Pressable
+                  key={String(o.value)}
+                  onPress={() => { onChange(o.value); setOpen(false); }}
+                  style={({ pressed }) => [s.option, pressed && { backgroundColor: colors.accentSoft }]}
+                >
+                  <Text style={[s.optionText, o.value === value && { color: colors.accent, fontWeight: '800' }]}>{o.label}</Text>
+                  {o.value === value ? <Ionicons name="checkmark" size={20} color={colors.accent} /> : null}
+                </Pressable>
+              ))}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
     </View>
+  );
+}
+
+// Окно подтверждения (Alert.alert в вебе не работает, поэтому свой вариант)
+export function ConfirmModal({ visible, title, text, confirmLabel = 'Удалить', onConfirm, onCancel }) {
+  const s = useStyles(makeStyles);
+  const { colors } = useTheme();
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onCancel}>
+      <Pressable style={s.backdrop} onPress={onCancel}>
+        <Pressable style={[s.sheet, { padding: 20, gap: 14 }]} onPress={() => {}}>
+          <Text style={{ fontSize: 19, fontWeight: '800', color: colors.ink }}>{title}</Text>
+          {text ? <Text style={{ fontSize: 15, color: colors.muted, lineHeight: 21 }}>{text}</Text> : null}
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <Button title="Отмена" style={{ flex: 1 }} onPress={onCancel} />
+            <Button title={confirmLabel} variant="danger" style={{ flex: 1 }} onPress={onConfirm} />
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
