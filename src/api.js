@@ -54,32 +54,56 @@ export async function clearToken() { token = null; await store.clear(); }
 export const hasToken = () => !!token;
 
 // ---------- Запросы ----------
+// Загрузка файлов: XMLHttpRequest надёжнее fetch для FormData с файлами с телефона ({uri,name,type})
+function xhrUpload(path, form) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', BASE + path);
+    xhr.setRequestHeader('Accept', 'application/json');
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.timeout = 120000;
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch {}
+      resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, data });
+    };
+    xhr.onerror = () => reject(new Error(`Не удалось отправить фото на сервер (${HOST}). Проверьте соединение и размер файла`));
+    xhr.ontimeout = () => reject(new Error('Сервер слишком долго отвечает. Попробуйте ещё раз'));
+    xhr.send(form);
+  });
+}
+
 async function request(method, path, body) {
-  const headers = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const options = { method, headers };
+  let status, ok, data;
+
   if (body instanceof FormData) {
-    options.body = body; // Content-Type с boundary выставится сам
-  } else if (body !== undefined) {
-    headers['Content-Type'] = 'application/json';
-    options.body = JSON.stringify(body);
+    ({ ok, status, data } = await xhrUpload(path, body));
+  } else {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const options = { method, headers };
+    if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      options.body = JSON.stringify(body);
+    }
+    let res;
+    try {
+      res = await fetch(BASE + path, options);
+    } catch {
+      const err = new Error(`Нет связи с сервером (${HOST}). Проверьте, что бэкенд запущен`);
+      err.network = true;
+      throw err;
+    }
+    ok = res.ok;
+    status = res.status;
+    data = status === 204 ? null : await res.json().catch(() => ({}));
   }
 
-  let res;
-  try {
-    res = await fetch(BASE + path, options);
-  } catch {
-    const err = new Error(`Нет связи с сервером (${HOST}). Проверьте, что бэкенд запущен`);
-    err.network = true;
-    throw err;
-  }
-  if (res.ok) return res.status === 204 ? null : res.json();
-
-  const data = await res.json().catch(() => ({}));
+  if (ok) return data;
   // FastAPI при ошибке валидации отдаёт detail списком — берём только строку
-  const err = new Error(typeof data.detail === 'string' ? data.detail : `Ошибка запроса (${res.status})`);
-  err.status = res.status;
-  if (res.status === 401 && token && !path.startsWith('/auth/')) onUnauthorized();
+  const err = new Error(typeof data?.detail === 'string' ? data.detail : `Ошибка запроса (${status})`);
+  err.status = status;
+  if (status === 401 && token && !path.startsWith('/auth/')) onUnauthorized();
   throw err;
 }
 
