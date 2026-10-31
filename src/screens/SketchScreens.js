@@ -6,18 +6,48 @@ import { PhotoViewer } from '../components/photos';
 import { pickPhotos } from '../photos';
 import { useApp } from '../state';
 import { useTheme, useStyles, radius } from '../theme';
-import { categories, timeOptions, countOptions, orderOptions } from '../data/mock';
+import { api } from '../api';
 import { buildPlan } from '../plan';
 
 export function SketchSettings({ navigation }) {
   const s = useStyles(makeStyles);
+  const { colors } = useTheme();
+  const [opts, setOpts] = useState(null);          // { categories, times, counts, orders } с сервера
+  const [loadError, setLoadError] = useState(null);
   const [seconds, setSeconds] = useState(60);
   const [count, setCount] = useState(10);
   const [order, setOrder] = useState('random');
-  const [picked, setPicked] = useState(['Позы']); // порядок = порядок выбора
+  const [picked, setPicked] = useState([]); // порядок = порядок выбора
   const toggle = (c) => setPicked((p) => (p.includes(c) ? p.filter((x) => x !== c) : [...p, c]));
 
+  const load = () => {
+    setLoadError(null);
+    Promise.all([api.sketchCategories(), api.sketchOptions()])
+      .then(([cats, o]) => {
+        setOpts({ categories: cats.map((c) => c.name), times: o.times, counts: o.counts, orders: o.orders });
+        setSeconds(o.defaults.seconds);
+        setCount(o.defaults.count);
+        setOrder(o.defaults.order);
+        setPicked((p) => (p.length ? p : cats.length ? [cats[0].name] : []));
+      })
+      .catch((e) => setLoadError(e.message));
+  };
+  useEffect(load, []);
+
   const start = () => navigation.navigate('SketchSession', { plan: buildPlan(picked, count, order), seconds, categories: picked });
+
+  if (loadError) {
+    return (
+      <Screen>
+        <Card style={{ gap: 12 }}>
+          <Text style={{ color: colors.accent, fontWeight: '600', fontSize: 15 }}>{loadError}</Text>
+          <Button title="Повторить" onPress={load} />
+        </Card>
+      </Screen>
+    );
+  }
+  if (!opts) return <Screen><Text style={{ color: colors.muted, textAlign: 'center', marginTop: 40 }}>Загрузка…</Text></Screen>;
+  const { categories, times: timeOptions, counts: countOptions, orders: orderOptions } = opts;
 
   return (
     <Screen scroll>
@@ -41,7 +71,7 @@ export function SketchSettings({ navigation }) {
             })}
           </View>
           {picked.length === 0 && <Text style={s.hint}>Выберите хотя бы одну категорию</Text>}
-          {picked.length > 1 && order === 'sequence' && (
+          {picked.length > 1 && order === 'ordered' && (
             <Text style={s.hint}>Порядок показа: {picked.join(' → ')}</Text>
           )}
         </View>
@@ -56,6 +86,9 @@ const fmt = (sec) => `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(
 export function SketchSession({ navigation, route }) {
   const s = useStyles(makeStyles);
   const { plan, seconds, categories = [] } = route.params;
+  const { colors } = useTheme();
+  const [refs, setRefs] = useState(null);   // { категория: [url, ...] }
+  const [frames, setFrames] = useState([]); // [{ category, image }] — по кадру на каждый пункт плана
   const [i, setI] = useState(0);
   const [left, setLeft] = useState(seconds);
   const startedAt = useRef(Date.now());
@@ -73,13 +106,38 @@ export function SketchSession({ navigation, route }) {
     setLeft(seconds);
   };
 
+  // Загружаем референсы и раскладываем по кадрам плана: внутри категории фото идут вперемешку и без повторов, пока не кончатся
   useEffect(() => {
+    api.sketchReferences(categories)
+      .catch(() => ({}))
+      .then((data) => {
+        const bags = {};
+        const draw = (cat) => {
+          const all = data[cat] || [];
+          if (!all.length) return null;
+          if (!bags[cat] || !bags[cat].length) bags[cat] = [...all].sort(() => Math.random() - 0.5);
+          return bags[cat].pop();
+        };
+        const list = plan.map((cat) => ({ category: cat, image: draw(cat) }));
+        list.forEach((f) => { if (f.image) Image.prefetch?.(f.image); });
+        setFrames(list);
+        setRefs(data);
+        startedAt.current = Date.now();
+      });
+  }, []);
+
+  // таймер стартует только когда референсы загружены
+  useEffect(() => {
+    if (!refs) return;
     const t = setInterval(() => setLeft((l) => l - 1), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [refs]);
   useEffect(() => {
-    if (left <= 0) next();
+    if (refs && left <= 0) next();
   }, [left]);
+
+  if (!refs) return <Screen><Text style={{ color: colors.muted, textAlign: 'center', marginTop: 40 }}>Загружаем референсы…</Text></Screen>;
+  const frame = frames[i];
 
   return (
     <Screen>
@@ -88,7 +146,11 @@ export function SketchSession({ navigation, route }) {
         <View style={s.progress}><View style={[s.progressFill, { width: `${(left / seconds) * 100}%` }]} /></View>
         <Text style={s.hint}>Кадр {i + 1} из {plan.length} · {plan[i]}</Text>
       </View>
-      <Placeholder text={`Фото референс: ${plan[i]}`} style={{ flex: 1, marginTop: 12 }} />
+      {frame?.image ? (
+        <Image source={{ uri: frame.image }} style={[s.reference, { flex: 1, marginTop: 12 }]} resizeMode="contain" />
+      ) : (
+        <Placeholder text={`Нет референсов в категории «${plan[i]}»`} style={{ flex: 1, marginTop: 12 }} />
+      )}
       <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
         <Button title="Завершить" style={{ flex: 1 }} onPress={finish} />
         <Button title="Далее" icon="arrow-forward" variant="primary" style={{ flex: 1 }} onPress={next} />
@@ -136,11 +198,19 @@ export function SketchFinish({ navigation, route }) {
     setItems((p) => p.filter((_, k) => k !== i));
     setStatus(null);
   };
-  const send = () => {
+  const [sending, setSending] = useState(false);
+  const send = async () => {
     if (!loggedIn) return pick();
-    addAlbum(pending.map((it) => it.uri), categories);
-    setItems((p) => p.map((it) => ({ ...it, sent: true })));
-    setStatus({ text: 'Фото сохранено. Его можно посмотреть в «Ваших работах».', toWorks: true });
+    setSending(true);
+    try {
+      await addAlbum(pending.map((it) => it.uri), categories);
+      setItems((p) => p.map((it) => ({ ...it, sent: true })));
+      setStatus({ text: 'Фото сохранено. Его можно посмотреть в «Ваших работах».', toWorks: true });
+    } catch (e) {
+      setStatus({ text: e.message, error: true });
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -175,7 +245,7 @@ export function SketchFinish({ navigation, route }) {
               </Pressable>
             </ScrollView>
             {pending.length > 0 && (
-              <Button title={pending.length > 1 ? `Прикрепить (${pending.length})` : 'Прикрепить'} variant="primary" onPress={send} />
+              <Button title={sending ? 'Отправляем…' : pending.length > 1 ? `Прикрепить (${pending.length})` : 'Прикрепить'} variant="primary" disabled={sending} onPress={send} />
             )}
           </Card>
         )}
@@ -183,7 +253,7 @@ export function SketchFinish({ navigation, route }) {
           <View style={{ gap: 10, alignItems: 'flex-start' }}>
             <Text style={{ color: status.error ? colors.accent : colors.muted, fontSize: 15, fontWeight: '600' }}>{status.text}</Text>
             {status.needLogin && (
-              <Button title="Войти в аккаунт" variant="primary" style={s.small} onPress={() => navigation.navigate('Profile')} />
+              <Button title="Войти в аккаунт" variant="primary" style={s.small} onPress={() => navigation.navigate('Profile', { screen: 'Login' })} />
             )}
             {status.toWorks && (
               <Button title="Открыть «Ваши работы»" style={s.small} onPress={() => navigation.navigate('Profile', { screen: 'MyWorks' })} />
@@ -208,6 +278,7 @@ const makeStyles = (c) => StyleSheet.create({
   timerText: { color: c.bg, fontSize: 34, fontWeight: '800', fontVariant: ['tabular-nums'] },
   progress: { height: 6, alignSelf: 'stretch', backgroundColor: c.border, borderRadius: 3, marginTop: 14, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: c.accent },
+  reference: { width: '100%', borderRadius: radius.m, backgroundColor: c.placeholder },
   thumbWrap: { width: 76, height: 76 },
   thumb: { width: 76, height: 76, borderRadius: radius.s, backgroundColor: c.placeholder },
   removeBtn: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },

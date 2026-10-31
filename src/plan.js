@@ -11,7 +11,7 @@ const shuffle = (arr) => {
 // categories — в порядке выбора пользователем.
 export function buildPlan(categories, count, order) {
   if (!categories.length) return [];
-  if (order === 'random') {
+  if (order !== 'ordered') {
     const plan = [];
     let bag = [];
     while (plan.length < count) {
@@ -24,7 +24,7 @@ export function buildPlan(categories, count, order) {
     }
     return plan;
   }
-  // по порядку выбора: сначала все кадры первой категории, потом второй и т.д.
+  // по порядку выбора (order === 'ordered'): сначала все кадры первой категории, потом второй и т.д.
   const base = Math.floor(count / categories.length);
   const extra = count % categories.length;
   return categories.flatMap((c, i) => Array(base + (i < extra ? 1 : 0)).fill(c));

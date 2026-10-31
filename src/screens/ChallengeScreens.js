@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen, Button, Card, Label, Select } from '../components/ui';
@@ -6,7 +6,7 @@ import { PhotoViewer } from '../components/photos';
 import { pickPhotos } from '../photos';
 import { useTheme, useStyles, radius } from '../theme';
 import { useApp } from '../state';
-import { calendarChallenges, permanentChallenges, allChallenges } from '../data/mock';
+import { api } from '../api';
 
 export function ChallengeGallery({ navigation }) {
   const s = useStyles(makeStyles);
@@ -28,11 +28,37 @@ export function ChallengeGallery({ navigation }) {
   );
 }
 
+const Loading = () => {
+  const { colors } = useTheme();
+  return <Text style={{ color: colors.muted, textAlign: 'center', marginTop: 40 }}>Загрузка…</Text>;
+};
+const ErrorBox = ({ text, onRetry }) => {
+  const { colors } = useTheme();
+  return (
+    <Card style={{ gap: 12, marginTop: 12 }}>
+      <Text style={{ color: colors.accent, fontWeight: '600', fontSize: 15 }}>{text}</Text>
+      {onRetry ? <Button title="Повторить" onPress={onRetry} /> : null}
+    </Card>
+  );
+};
+
 export function ChallengeList({ navigation, route }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
-  const list = route.params?.kind === 'permanent' ? permanentChallenges : calendarChallenges;
+  const kind = route.params?.kind === 'permanent' ? 'permanent' : 'calendar';
+  const [list, setList] = useState(null);
+  const [error, setError] = useState(null);
   const [i, setI] = useState(0);
+  const load = () => {
+    setError(null);
+    api.challenges(kind).then(setList).catch((e) => setError(e.message));
+  };
+  useEffect(load, [kind]);
+
+  if (error) return <Screen><ErrorBox text={error} onRetry={load} /></Screen>;
+  if (!list) return <Screen><Loading /></Screen>;
+  if (!list.length) return <Screen><Card><Text style={{ color: colors.muted, textAlign: 'center' }}>Челленджей пока нет</Text></Card></Screen>;
+
   const c = list[i];
   const go = (d) => setI((x) => (x + d + list.length) % list.length);
   return (
@@ -64,67 +90,84 @@ const PREVIEW = 8; // сколько тем показываем, пока сп�
 export function ChallengeDetail({ navigation, route }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
-  const { loggedIn, joined, join, leave, works, setChallengeWork } = useApp();
+  const { loggedIn, joined, join, leave, attachChallengePhoto } = useApp();
+  const id = route.params?.id;
+  const [c, setC] = useState(null);                // { id, title, dates, description, topics: [{id, title}] }
+  const [loadError, setLoadError] = useState(null);
+  const [mine, setMine] = useState([]);            // мои фото к темам этого челленджа: { topic_id, uri, ... }
   const [warn, setWarn] = useState(false);
   const [showAll, setShowAll] = useState(false);   // развёрнут ли список тем
   const [panel, setPanel] = useState(false);       // открыта ли форма «Прикрепить фото»
-  const [topic, setTopic] = useState(null);        // тема, выбранная в форме (null = первая без фото)
+  const [topic, setTopic] = useState(null);        // id темы, выбранной в форме (null = первая без фото)
   const [photo, setPhoto] = useState(null);        // выбранное фото
   const [status, setStatus] = useState(null);      // { text, error }
   const [viewer, setViewer] = useState(null);      // фото, открытое на весь экран
-  const c = allChallenges.find((x) => x.id === route.params?.id) ?? allChallenges[0];
-  const isIn = loggedIn && joined.includes(c.id);
-  const onJoin = () => (loggedIn ? join(c.id) : setWarn(true)); // без входа участвовать нельзя
+  const [busy, setBusy] = useState(false);
 
-  const mine = works.filter((w) => w.kind === 'challenge' && w.challengeId === c.id);
-  const workOf = (k) => mine.find((w) => w.topicIndex === k);
-  const firstFree = () => {
-    const k = c.topics.findIndex((_, i) => !workOf(i));
-    return k < 0 ? 0 : k;
+  const isIn = loggedIn && c && joined.includes(c.id);
+
+  const loadMine = () => api.challengeWorks(id).then(setMine).catch(() => {});
+  const load = () => {
+    setLoadError(null);
+    api.challenge(id).then(setC).catch((e) => setLoadError(e.message));
   };
+  useEffect(load, [id]);
+  useEffect(() => { if (loggedIn && isIn) loadMine(); else setMine([]); }, [loggedIn, isIn, id]);
+
+  if (loadError) return <Screen><ErrorBox text={loadError} onRetry={load} /></Screen>;
+  if (!c) return <Screen><Loading /></Screen>;
+
+  const run = async (fn) => {
+    setBusy(true);
+    try { await fn(); } catch (e) { setStatus({ text: e.message, error: true }); } finally { setBusy(false); }
+  };
+
+  const onJoin = () => (loggedIn ? run(() => join(c.id)) : setWarn(true)); // без входа участвовать нельзя
+  const workOf = (topicId) => mine.find((w) => w.topic_id === topicId);
+  const firstFree = () => (c.topics.find((t) => !workOf(t.id)) ?? c.topics[0])?.id;
   const selected = topic ?? firstFree();
+  const selectedTitle = c.topics.find((t) => t.id === selected)?.title;
 
-  const openPanel = (k) => {
-    setPanel(true);
-    setTopic(k);
-    setStatus(null);
-  };
+  const openPanel = (topicId) => { setPanel(true); setTopic(topicId); setStatus(null); };
   const choose = async () => {
     const [uri] = await pickPhotos({ multiple: false });
     if (uri) { setPhoto(uri); setStatus(null); }
   };
   const upload = () => {
     if (!photo) return setStatus({ text: 'Сначала выберите фото', error: true });
-    setChallengeWork({ challengeId: c.id, challengeTitle: c.title, topicIndex: selected, topicTitle: c.topics[selected], uri: photo });
-    setStatus({ text: `Фото прикреплено к теме «${c.topics[selected]}»`, error: false });
-    setPhoto(null);
-    setTopic(null);
+    run(async () => {
+      await attachChallengePhoto(photo, c.id, selected);
+      await loadMine();
+      setStatus({ text: `Фото прикреплено к теме «${selectedTitle}»`, error: false });
+      setPhoto(null);
+      setTopic(null);
+    });
   };
-  const onLeave = () => {
-    leave(c.id);
+  const onLeave = () => run(async () => {
+    await leave(c.id);
     setPanel(false);
     setStatus(null);
-  };
+  });
 
   const rows = showAll ? c.topics : c.topics.slice(0, PREVIEW);
 
   return (
     <Screen scroll>
       <Text style={s.h1}>{c.title}</Text>
-      <Card><Label>ОПИСАНИЕ И УСЛОВИЯ</Label><Text style={{ fontSize: 16, color: colors.ink, lineHeight: 23 }}>{c.desc}</Text></Card>
+      <Card><Label>ОПИСАНИЕ И УСЛОВИЯ</Label><Text style={{ fontSize: 16, color: colors.ink, lineHeight: 23 }}>{c.description}</Text></Card>
       <Card style={{ gap: 4 }}>
         <Label>СПИСОК ТЕМ</Label>
-        {rows.map((t, k) => {
-          const w = isIn ? workOf(k) : null;
+        {rows.map((t) => {
+          const w = isIn ? workOf(t.id) : null;
           return (
-            <View key={k} style={s.topic}>
-              <Text style={{ flex: 1, fontSize: 15, color: colors.ink }}>{t}</Text>
+            <View key={t.id} style={s.topic}>
+              <Text style={{ flex: 1, fontSize: 15, color: colors.ink }}>{t.title}</Text>
               {w ? (
-                <Pressable accessibilityLabel="Открыть фото" onPress={() => setViewer(w.images[0].uri)}>
-                  <Image source={{ uri: w.images[0].uri }} style={s.topicThumb} />
+                <Pressable accessibilityLabel="Открыть фото" onPress={() => setViewer(w.uri)}>
+                  <Image source={{ uri: w.uri }} style={s.topicThumb} />
                 </Pressable>
               ) : isIn ? (
-                <Pressable accessibilityLabel="Прикрепить фото к теме" hitSlop={8} onPress={() => openPanel(k)}>
+                <Pressable accessibilityLabel="Прикрепить фото к теме" hitSlop={8} onPress={() => openPanel(t.id)}>
                   <Ionicons name="image-outline" size={22} color={colors.muted} />
                 </Pressable>
               ) : null}
@@ -149,7 +192,7 @@ export function ChallengeDetail({ navigation, route }) {
               <Select
                 label="Тема"
                 value={selected}
-                options={c.topics.map((t, k) => ({ value: k, label: `${workOf(k) ? '✓ ' : ''}${t}` }))}
+                options={c.topics.map((t) => ({ value: t.id, label: `${workOf(t.id) ? '✓ ' : ''}${t.title}` }))}
                 onChange={(v) => { setTopic(v); setStatus(null); }}
               />
               <View style={{ gap: 10 }}>
@@ -161,14 +204,14 @@ export function ChallengeDetail({ navigation, route }) {
                 ) : null}
                 <Button title={photo ? 'Выбрать другое фото' : 'Выбрать фото'} icon="image-outline" onPress={choose} />
               </View>
-              <Button title="Загрузить" variant="primary" onPress={upload} />
+              <Button title={busy ? 'Загружаем…' : 'Загрузить'} variant="primary" disabled={busy} onPress={upload} />
               {status ? (
                 <Text style={{ color: status.error ? colors.accent : colors.muted, fontSize: 15, fontWeight: '600' }}>{status.text}</Text>
               ) : null}
               <Text style={{ color: colors.muted, fontSize: 14 }}>Если к теме уже есть фото, новое заменит его.</Text>
             </Card>
           )}
-          <Button title="Отменить участие" variant="danger" onPress={onLeave} />
+          <Button title="Отменить участие" variant="danger" disabled={busy} onPress={onLeave} />
         </View>
       ) : (
         <View style={{ gap: 12 }}>
@@ -177,11 +220,12 @@ export function ChallengeDetail({ navigation, route }) {
               <Ionicons name="alert-circle-outline" size={22} color={colors.accent} />
               <View style={{ flex: 1, gap: 10, alignItems: 'flex-start' }}>
                 <Text style={{ fontSize: 15, fontWeight: '600', color: colors.ink }}>Нельзя участвовать в челлендже, пока вы не вошли в профиль.</Text>
-                <Button title="Войти в аккаунт" variant="primary" style={s.noticeBtn} onPress={() => navigation.navigate('Profile')} />
+                <Button title="Войти в аккаунт" variant="primary" style={s.noticeBtn} onPress={() => navigation.navigate('Profile', { screen: 'Login' })} />
               </View>
             </View>
           )}
-          <Button title="Участвовать" variant="primary" onPress={onJoin} />
+          {status?.error ? <Text style={{ color: colors.accent, fontSize: 15, fontWeight: '600' }}>{status.text}</Text> : null}
+          <Button title="Участвовать" variant="primary" disabled={busy} onPress={onJoin} />
         </View>
       )}
       <PhotoViewer visible={viewer !== null} images={viewer ? [viewer] : []} onClose={() => setViewer(null)} />

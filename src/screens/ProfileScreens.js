@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, Pressable, Switch, StyleSheet, Platform, Image, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen, Button, Card, ListRow, ConfirmModal } from '../components/ui';
 import { PhotoPager, PhotoViewer } from '../components/photos';
 import { useTheme, useStyles, radius } from '../theme';
 import { useApp } from '../state';
-import { allChallenges, savedGenerations } from '../data/mock';
+import { api } from '../api';
 
 const isWeb = Platform.OS === 'web';
 const BackBtn = ({ navigation }) => <Button title="Назад" onPress={() => navigation.goBack()} style={{ marginTop: 'auto' }} />;
@@ -16,9 +17,8 @@ export function ProfileHome(props) {
   return loggedIn ? <ProfileMenu {...props} /> : <ProfileGuest {...props} />;
 }
 
-function ProfileGuest() {
+function ProfileGuest({ navigation }) {
   const { colors } = useTheme();
-  const { login } = useApp();
   return (
     <Screen>
       <Card style={{ alignItems: 'center', paddingVertical: 36, marginTop: 40 }}>
@@ -26,8 +26,8 @@ function ProfileGuest() {
         <Text style={{ fontSize: 20, fontWeight: '700', color: colors.ink, marginTop: 8 }}>Вы еще не вошли в профиль</Text>
       </Card>
       <View style={{ gap: 12, marginTop: 20 }}>
-        <Button title="Войти в аккаунт" variant="primary" onPress={login} />
-        <Button title="Зарегистрироваться" onPress={login} />
+        <Button title="Войти в аккаунт" variant="primary" onPress={() => navigation.navigate('Login')} />
+        <Button title="Зарегистрироваться" onPress={() => navigation.navigate('Register')} />
       </View>
     </Screen>
   );
@@ -36,12 +36,12 @@ function ProfileGuest() {
 function ProfileMenu({ navigation }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
-  const { logout } = useApp();
+  const { logout, user } = useApp();
   return (
     <Screen>
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <View style={s.avatar}><Text style={{ color: '#fff', fontSize: 22, fontWeight: '800' }}>Н</Text></View>
-        <View><Text style={{ fontSize: 20, fontWeight: '800', color: colors.ink }}>Никнейм</Text><Text style={{ color: colors.muted }}>Серия: 5 дней</Text></View>
+        <View style={s.avatar}><Text style={{ color: '#fff', fontSize: 22, fontWeight: '800' }}>{(user?.nickname || '?')[0].toUpperCase()}</Text></View>
+        <View><Text style={{ fontSize: 20, fontWeight: '800', color: colors.ink }}>{user?.nickname}</Text><Text style={{ color: colors.muted }}>Серия: {user?.streak_days ?? 0} дн.</Text></View>
       </Card>
       <View style={{ gap: 10, marginTop: 8 }}>
         {/* В вебе настройки приложения не нужны: тема переключается значком в углу, смена аккаунта — здесь */}
@@ -74,7 +74,13 @@ export function MyChallenges({ navigation }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
   const { joined } = useApp();
-  const mine = allChallenges.filter((c) => joined.includes(c.id));
+  const [mine, setMine] = useState(null);
+  const [error, setError] = useState(null);
+  useFocusEffect(useCallback(() => {
+    api.myChallenges().then((l) => { setMine(l); setError(null); }).catch((e) => setError(e.message));
+  }, [joined]));
+  if (error) return <Screen><Card><Text style={{ color: colors.accent, fontWeight: '600' }}>{error}</Text></Card><BackBtn navigation={navigation} /></Screen>;
+  if (!mine) return <Screen><Text style={{ color: colors.muted, textAlign: 'center', marginTop: 40 }}>Загрузка…</Text></Screen>;
   return (
     <Screen>
       <View style={{ gap: 10 }}>
@@ -98,13 +104,26 @@ export function MyChallenges({ navigation }) {
 
 export function SavedGenerations({ navigation }) {
   const s = useStyles(makeStyles);
+  const { colors } = useTheme();
+  const [list, setList] = useState(null);
+  const [error, setError] = useState(null);
+  useFocusEffect(useCallback(() => {
+    api.generations().then((l) => { setList(l); setError(null); }).catch((e) => setError(e.message));
+  }, []));
+  if (error) return <Screen><Card><Text style={{ color: colors.accent, fontWeight: '600' }}>{error}</Text></Card><BackBtn navigation={navigation} /></Screen>;
+  if (!list) return <Screen><Text style={{ color: colors.muted, textAlign: 'center', marginTop: 40 }}>Загрузка…</Text></Screen>;
   return (
     <Screen>
       <View style={{ gap: 10 }}>
-        {savedGenerations.map((g) => (
+        {list.length === 0 && (
+          <Card style={{ alignItems: 'center', paddingVertical: 28 }}>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: colors.ink, textAlign: 'center' }}>Сохранённых генераций пока нет</Text>
+          </Card>
+        )}
+        {list.map((g) => (
           <Card key={g.id} style={s.listCard}>
             <Text style={s.cardTitle}>{g.title}</Text>
-            <Button title="подробно" style={s.small} onPress={() => navigation.navigate('Generate', { screen: 'GenerateResult' })} />
+            <Button title="подробно" style={s.small} onPress={() => navigation.navigate('Generate', { screen: 'GenerateResult', params: { saved: g, topic: true, idea: true, palette: true } })} />
           </Card>
         ))}
       </View>
@@ -130,8 +149,10 @@ export function MyWorks({ navigation }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
-  const { works, removeWorks } = useApp();
+  const { works, removeWorks, refreshWorks } = useApp();
   const [edit, setEdit] = useState(false);
+  const [error, setError] = useState(null);
+  useFocusEffect(useCallback(() => { refreshWorks().catch(() => {}); }, []));
   const [sel, setSel] = useState([]);
   const [confirm, setConfirm] = useState(false);
   const toggle = (id) => setSel((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -139,10 +160,16 @@ export function MyWorks({ navigation }) {
   const gap = 10;
   const size = Math.floor((Math.min(width, 640) - 32 - gap * 2) / 3);
 
-  const doDelete = () => {
-    removeWorks(sel);
-    setSel([]);
+  const doDelete = async () => {
     setConfirm(false);
+    try {
+      await removeWorks(sel);
+      setError(null);
+    } catch (e) {
+      setError(e.message);
+      refreshWorks().catch(() => {});
+    }
+    setSel([]);
     setEdit(false);
   };
 
@@ -153,6 +180,7 @@ export function MyWorks({ navigation }) {
           <Button title={edit ? 'Готово' : 'Редактировать'} icon={edit ? 'checkmark' : 'create-outline'} style={s.small} onPress={() => { setEdit(!edit); setSel([]); }} />
         </View>
       )}
+      {error ? <Text style={{ color: colors.accent, fontWeight: '600' }}>{error}</Text> : null}
       {works.length === 0 ? (
         <Card style={{ alignItems: 'center', paddingVertical: 28 }}>
           <Text style={{ fontSize: 17, fontWeight: '700', color: colors.ink, textAlign: 'center' }}>Работ пока нет</Text>
@@ -231,7 +259,7 @@ export function MyWork({ navigation, route }) {
         visible={confirm}
         title={many ? `Удалить альбом (${uris.length} фото)?` : 'Удалить эту работу?'}
         text="Это нельзя отменить."
-        onConfirm={() => { setConfirm(false); removeWorks([item.id]); }}
+        onConfirm={async () => { setConfirm(false); try { await removeWorks([item.id]); } catch {} }}
         onCancel={() => setConfirm(false)}
       />
     </Screen>
