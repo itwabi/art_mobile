@@ -85,22 +85,22 @@ export function ChallengeList({ navigation, route }) {
   );
 }
 
-const PREVIEW = 8; 
+const PREVIEW = 8;
 
 export function ChallengeDetail({ navigation, route }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
   const { loggedIn, joined, join, leave, attachChallengePhoto } = useApp();
   const id = route.params?.id;
-  const [c, setC] = useState(null);                
+  const [c, setC] = useState(null);             
   const [loadError, setLoadError] = useState(null);
-  const [mine, setMine] = useState([]);            
+  const [mine, setMine] = useState([]);          
   const [warn, setWarn] = useState(false);
-  const [showAll, setShowAll] = useState(false);   
-  const [panel, setPanel] = useState(false);       
+  const [showAll, setShowAll] = useState(false);  
+  const [panel, setPanel] = useState(false);     
   const [topic, setTopic] = useState(null);        
-  const [photo, setPhoto] = useState(null);        
-  const [status, setStatus] = useState(null);      
+  const [photo, setPhoto] = useState(null);      
+  const [status, setStatus] = useState(null);   
   const [viewer, setViewer] = useState(null);     
   const [busy, setBusy] = useState(false);
 
@@ -122,7 +122,7 @@ export function ChallengeDetail({ navigation, route }) {
     try { await fn(); } catch (e) { setStatus({ text: e.message, error: true }); } finally { setBusy(false); }
   };
 
-  const onJoin = () => (loggedIn ? run(() => join(c.id)) : setWarn(true)); 
+  const onJoin = () => (loggedIn ? run(() => join(c.id)) : setWarn(true)); // без входа участвовать нельзя
   const workOf = (topicId) => mine.find((w) => w.topic_id === topicId);
   const firstFree = () => (c.topics.find((t) => !workOf(t.id)) ?? c.topics[0])?.id;
   const selected = topic ?? firstFree();

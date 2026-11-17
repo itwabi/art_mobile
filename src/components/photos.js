@@ -4,7 +4,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, useStyles, radius } from '../theme';
 
-
 export function PhotoPager({ images, height, fit = 'contain', startIndex = 0, onPress, dots = false, dark = false }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();

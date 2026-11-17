@@ -31,7 +31,7 @@ function AuthForm({ navigation, mode }) {
     setError(null);
     try {
       await (isRegister ? register(nick, password) : login(nick, password));
-      navigation.popToTop(); 
+      navigation.popToTop(); // вход выполнен — ProfileHome сам покажет меню профиля
     } catch (e) {
       setError(e.message);
     } finally {

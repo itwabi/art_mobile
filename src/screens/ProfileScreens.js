@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, Pressable, Switch, StyleSheet, Platform, Image, useWindowDimensions } from 'react-native';
+import { View, Text, TextInput, Pressable, Switch, StyleSheet, Platform, Image, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Screen, Button, Card, ListRow, ConfirmModal } from '../components/ui';
+import { Screen, Button, Card, ListRow, ConfirmModal, Label } from '../components/ui';
 import { PhotoPager, PhotoViewer } from '../components/photos';
 import { useTheme, useStyles, radius } from '../theme';
 import { useApp } from '../state';
@@ -61,8 +61,71 @@ export function AppSettings({ navigation }) {
       <View style={{ gap: 10 }}>
         <ListRow title="Тема приложения" right={<Switch value={mode === 'dark'} onValueChange={toggle} trackColor={{ true: colors.accent }} />} />
         <ListRow title="Смена аккаунта" onPress={() => { logout(); navigation.popToTop(); }} />
-        <ListRow title="Смена пароля" />
+        <ListRow title="Смена пароля" onPress={() => navigation.navigate('ChangePassword')} />
       </View>
+      <BackBtn navigation={navigation} />
+    </Screen>
+  );
+}
+
+export function ChangePassword({ navigation }) {
+  const s = useStyles(makeStyles);
+  const { colors } = useTheme();
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setError(null);
+    setSuccess(null);
+    if (!currentPassword || !newPassword || !confirmPassword) return setError('Заполните все поля');
+    if (newPassword.length < 6 || newPassword.length > 128) return setError('Новый пароль должен быть от 6 до 128 символов');
+    if (newPassword !== confirmPassword) return setError('Новые пароли не совпадают');
+    if (currentPassword === newPassword) return setError('Новый пароль должен отличаться от текущего');
+    setBusy(true);
+    try {
+      const result = await api.changePassword(currentPassword, newPassword);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setSuccess(result?.message || 'Пароль успешно изменён');
+    } catch (e) {
+      setError(e.message || 'Не удалось изменить пароль');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const field = (label, value, onChangeText, placeholder, autoComplete) => (
+    <View>
+      <Label>{label}</Label>
+      <TextInput
+        value={value}
+        onChangeText={(v) => { onChangeText(v); setError(null); setSuccess(null); }}
+        secureTextEntry
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete={autoComplete}
+        placeholder={placeholder}
+        placeholderTextColor={colors.muted}
+        style={s.input}
+      />
+    </View>
+  );
+
+  return (
+    <Screen scroll>
+      <Card style={{ gap: 14 }}>
+        {field('Текущий пароль', currentPassword, setCurrentPassword, 'Текущий пароль', 'current-password')}
+        {field('Новый пароль', newPassword, setNewPassword, 'От 6 до 128 символов', 'new-password')}
+        {field('Повторите новый пароль', confirmPassword, setConfirmPassword, 'Повторите новый пароль', 'new-password')}
+        {error ? <Text style={{ color: colors.accent, fontWeight: '600' }}>{error}</Text> : null}
+        {success ? <Text style={{ color: '#26834A', fontWeight: '700' }}>{success}</Text> : null}
+        <Button title={busy ? 'Сохраняем…' : 'Изменить пароль'} variant="primary" disabled={busy} onPress={submit} />
+      </Card>
       <BackBtn navigation={navigation} />
     </Screen>
   );
@@ -201,7 +264,6 @@ export function MyWorks({ navigation }) {
   const [sel, setSel] = useState([]);
   const [confirm, setConfirm] = useState(false);
   const toggle = (id) => setSel((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  // Размер плитки считаем явно: aspectRatio внутри flexWrap на телефоне схлопывался в тонкие полосы
   const gap = 10;
   const size = Math.floor((Math.min(width, 640) - 32 - gap * 2) / 3);
 
@@ -323,6 +385,10 @@ export function MyWork({ navigation, route }) {
 }
 
 const makeStyles = (c) => StyleSheet.create({
+  input: {
+    borderWidth: 1.5, borderColor: c.border, borderRadius: radius.s, paddingHorizontal: 12, paddingVertical: 12,
+    fontSize: 16, color: c.ink, backgroundColor: c.card,
+  },
   avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },
   listCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, paddingLeft: 18, borderRadius: radius.m },
   metaLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.8, color: '#8A7F72' },

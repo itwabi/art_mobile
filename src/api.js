@@ -122,11 +122,15 @@ const appendFile = async (form, field, uri, i) => {
 const mapItem = (it) => ({ ...it, images: it.images.map((im) => ({ id: im.id, uri: mediaUrl(im.url) })) });
 
 export const api = {
+  // auth
   rules: () => get('/auth/rules'),
   login: (nickname, password) => post('/auth/login', { nickname, password }),
   register: (nickname, password) => post('/auth/register', { nickname, password }),
+  changePassword: (currentPassword, newPassword) => post('/auth/change-password', { current_password: currentPassword, new_password: newPassword }),
   logout: () => post('/auth/logout'),
+
   me: () => get('/me'),
+
   challenges: (kind) => get(`/challenges${kind ? `?kind=${kind}` : ''}`),
   challenge: (id) => get(`/challenges/${encodeURIComponent(id)}`),
   myChallenges: () => get('/me/challenges'),
@@ -145,6 +149,7 @@ export const api = {
     const w = await request('POST', '/me/works', form);
     return { ...w, uri: mediaUrl(w.url) };
   },
+
   gallery: async () => (await get('/me/gallery')).map(mapItem),
   uploadAlbum: async (uris, categories) => {
     const form = new FormData();

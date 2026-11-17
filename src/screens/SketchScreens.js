@@ -12,12 +12,12 @@ import { buildPlan } from '../plan';
 export function SketchSettings({ navigation }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
-  const [opts, setOpts] = useState(null); 
+  const [opts, setOpts] = useState(null);        
   const [loadError, setLoadError] = useState(null);
   const [seconds, setSeconds] = useState(60);
   const [count, setCount] = useState(10);
   const [order, setOrder] = useState('random');
-  const [picked, setPicked] = useState([]);
+  const [picked, setPicked] = useState([]); 
   const toggle = (c) => setPicked((p) => (p.includes(c) ? p.filter((x) => x !== c) : [...p, c]));
 
   const load = () => {
@@ -87,7 +87,7 @@ export function SketchSession({ navigation, route }) {
   const s = useStyles(makeStyles);
   const { plan, seconds, categories = [] } = route.params;
   const { colors } = useTheme();
-  const [refs, setRefs] = useState(null); 
+  const [refs, setRefs] = useState(null);   
   const [frames, setFrames] = useState([]); 
   const [i, setI] = useState(0);
   const [left, setLeft] = useState(seconds);

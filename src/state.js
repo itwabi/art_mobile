@@ -5,9 +5,9 @@ const Ctx = createContext(null);
 
 export function AppProvider({ children }) {
   const [ready, setReady] = useState(false);   
-  const [user, setUser] = useState(null);      
-  const [joined, setJoined] = useState([]);    
-  const [works, setWorks] = useState([]);     
+  const [user, setUser] = useState(null);   
+  const [joined, setJoined] = useState([]);   
+  const [works, setWorks] = useState([]);      
 
   const reset = useCallback(() => { setUser(null); setJoined([]); setWorks([]); }, []);
 

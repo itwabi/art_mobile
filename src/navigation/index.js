@@ -9,7 +9,7 @@ import { SketchSettings, SketchSession, SketchFinish } from '../screens/SketchSc
 import { GenerateSetup, GenerateResult } from '../screens/GenerateScreens';
 import { ChallengeGallery, ChallengeList, ChallengeDetail } from '../screens/ChallengeScreens';
 import { Login, Register } from '../screens/AuthScreens';
-import { ProfileHome, AppSettings, MyChallenges, SavedGenerations, MyWorks, MyWork } from '../screens/ProfileScreens';
+import { ProfileHome, AppSettings, ChangePassword, MyChallenges, SavedGenerations, MyWorks, MyWork } from '../screens/ProfileScreens';
 
 const Tab = createBottomTabNavigator();
 
@@ -53,6 +53,7 @@ const ProfileStack = mk([
   ['Login', Login, 'Вход'],
   ['Register', Register, 'Регистрация'],
   ['AppSettings', AppSettings, 'Настройки приложения'],
+  ['ChangePassword', ChangePassword, 'Смена пароля'],
   ['MyChallenges', MyChallenges, 'Ваши челленджи'],
   ['SavedGenerations', SavedGenerations, 'Сохраненные генерации'],
   ['MyWorks', MyWorks, 'Ваши работы'],
@@ -69,7 +70,7 @@ const tabs = [
 export default function Navigation() {
   const { width } = useWindowDimensions();
   const { colors, mode } = useTheme();
-  const wide = width >= 900; // веб на большом экране: боковое меню вместо нижнего
+  const wide = width >= 900; 
   const base = mode === 'dark' ? DarkTheme : DefaultTheme;
   return (
     <NavigationContainer theme={{ ...base, colors: { ...base.colors, background: colors.bg, card: colors.card, text: colors.ink, border: colors.border, primary: colors.accent } }}>
