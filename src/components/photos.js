@@ -4,8 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, useStyles, radius } from '../theme';
 
-// Горизонтальная лента фото со свайпом, стрелками и счётчиком.
-// Размер берётся у контейнера, поэтому height можно задавать числом или '100%'.
+
 export function PhotoPager({ images, height, fit = 'contain', startIndex = 0, onPress, dots = false, dark = false }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
@@ -70,7 +69,6 @@ export function PhotoPager({ images, height, fit = 'contain', startIndex = 0, on
   );
 }
 
-// Просмотр фото на весь экран (как увеличение в вебе)
 export function PhotoViewer({ images, index = 0, visible, onClose }) {
   const insets = useSafeAreaInsets();
   return (

@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 
 export const light = {
   bg: '#FBF7F0',
@@ -28,14 +30,36 @@ export const radius = { s: 10, m: 16, l: 24 };
 export const space = { xs: 6, s: 10, m: 16, l: 24, xl: 32 };
 
 const Ctx = createContext(null);
+const THEME_KEY = 'art_theme_mode';
 
 export function ThemeProvider({ children }) {
   const [mode, setMode] = useState('light');
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const saved = Platform.OS === 'web'
+          ? window.localStorage.getItem(THEME_KEY)
+          : await SecureStore.getItemAsync(THEME_KEY);
+        if (active && (saved === 'light' || saved === 'dark')) setMode(saved);
+      } catch {}
+    })();
+    return () => { active = false; };
+  }, []);
+
   const value = useMemo(
     () => ({
       mode,
       colors: mode === 'dark' ? dark : light,
-      toggle: () => setMode((m) => (m === 'dark' ? 'light' : 'dark')),
+      toggle: () => setMode((current) => {
+        const next = current === 'dark' ? 'light' : 'dark';
+        try {
+          if (Platform.OS === 'web') window.localStorage.setItem(THEME_KEY, next);
+          else SecureStore.setItemAsync(THEME_KEY, next).catch(() => {});
+        } catch {}
+        return next;
+      }),
     }),
     [mode]
   );
@@ -44,7 +68,6 @@ export function ThemeProvider({ children }) {
 
 export const useTheme = () => useContext(Ctx);
 
-// Стили, зависящие от темы: useStyles(makeStyles), где makeStyles = (colors) => StyleSheet.create({...})
 export function useStyles(factory) {
   const { colors } = useTheme();
   return useMemo(() => factory(colors), [colors]);

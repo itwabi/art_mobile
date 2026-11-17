@@ -44,10 +44,10 @@ export function GenerateResult({ navigation, route }) {
   const { colors } = useTheme();
   const { loggedIn } = useApp();
   const { topic = true, idea = true, palette = true, saved } = route.params ?? {};
-  const [result, setResult] = useState(saved ?? null);   // { theme, idea, palette }
+  const [result, setResult] = useState(saved ?? null);  
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState(null);            // { text, error, needLogin }
+  const [status, setStatus] = useState(null);            
   const [isSaved, setIsSaved] = useState(!!saved);
 
   const roll = async () => {
@@ -55,7 +55,6 @@ export function GenerateResult({ navigation, route }) {
     setError(null);
     setStatus(null);
     try {
-      // prev_* — чтобы «Пересоздать» не выдавал то же самое значение
       const r = await api.generate({ theme: topic, idea, palette }, result ?? {});
       setResult(r);
       setIsSaved(false);

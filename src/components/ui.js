@@ -64,7 +64,6 @@ export function Checkbox({ checked, onChange, label }) {
   );
 }
 
-// Выпадающий список: работает одинаково на телефоне и в вебе (модальное окно со списком)
 export function Select({ label, value, options, onChange, style }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
@@ -100,7 +99,6 @@ export function Select({ label, value, options, onChange, style }) {
   );
 }
 
-// Окно подтверждения (Alert.alert в вебе не работает, поэтому свой вариант)
 export function ConfirmModal({ visible, title, text, confirmLabel = 'Удалить', onConfirm, onCancel }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();

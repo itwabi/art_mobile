@@ -12,12 +12,12 @@ import { buildPlan } from '../plan';
 export function SketchSettings({ navigation }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
-  const [opts, setOpts] = useState(null);          // { categories, times, counts, orders } с сервера
+  const [opts, setOpts] = useState(null); 
   const [loadError, setLoadError] = useState(null);
   const [seconds, setSeconds] = useState(60);
   const [count, setCount] = useState(10);
   const [order, setOrder] = useState('random');
-  const [picked, setPicked] = useState([]); // порядок = порядок выбора
+  const [picked, setPicked] = useState([]);
   const toggle = (c) => setPicked((p) => (p.includes(c) ? p.filter((x) => x !== c) : [...p, c]));
 
   const load = () => {
@@ -87,8 +87,8 @@ export function SketchSession({ navigation, route }) {
   const s = useStyles(makeStyles);
   const { plan, seconds, categories = [] } = route.params;
   const { colors } = useTheme();
-  const [refs, setRefs] = useState(null);   // { категория: [url, ...] }
-  const [frames, setFrames] = useState([]); // [{ category, image }] — по кадру на каждый пункт плана
+  const [refs, setRefs] = useState(null); 
+  const [frames, setFrames] = useState([]); 
   const [i, setI] = useState(0);
   const [left, setLeft] = useState(seconds);
   const startedAt = useRef(Date.now());
@@ -106,7 +106,6 @@ export function SketchSession({ navigation, route }) {
     setLeft(seconds);
   };
 
-  // Загружаем референсы и раскладываем по кадрам плана: внутри категории фото идут вперемешку и без повторов, пока не кончатся
   useEffect(() => {
     api.sketchReferences(categories)
       .catch(() => ({}))
@@ -126,7 +125,6 @@ export function SketchSession({ navigation, route }) {
       });
   }, []);
 
-  // таймер стартует только когда референсы загружены
   useEffect(() => {
     if (!refs) return;
     const t = setInterval(() => setLeft((l) => l - 1), 1000);
@@ -174,13 +172,12 @@ export function SketchFinish({ navigation, route }) {
   const spent = elapsed ?? count * seconds;
   const time = spent < 60 ? 'меньше минуты' : `около ${Math.round(spent / 60)} мин`;
 
-  const [items, setItems] = useState([]);      // выбранные фото: { uri, sent }
-  const [status, setStatus] = useState(null);  // { text, error, needLogin, toWorks }
-  const [viewer, setViewer] = useState(null);  // номер открытого фото
+  const [items, setItems] = useState([]);    
+  const [status, setStatus] = useState(null);  
+  const [viewer, setViewer] = useState(null); 
 
   const pending = items.filter((it) => !it.sent);
 
-  // после входа в аккаунт убираем предупреждение «войдите в профиль»
   useEffect(() => {
     if (loggedIn) setStatus((st) => (st && st.needLogin ? null : st));
   }, [loggedIn]);

@@ -7,7 +7,6 @@ import Navigation from './src/navigation';
 import { ThemeProvider, useTheme } from './src/theme';
 import { AppProvider } from './src/state';
 
-// Только веб: значок луна/солнце в правом верхнем углу переключает тему
 function ThemeToggle() {
   const { mode, toggle, colors } = useTheme();
   return (

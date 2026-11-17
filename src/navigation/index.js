@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { useWindowDimensions } from 'react-native';
+import { useWindowDimensions, Platform, Pressable } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -16,7 +16,7 @@ const Tab = createBottomTabNavigator();
 function mk(screens) {
   const Stack = createNativeStackNavigator();
   return function StackNav() {
-    const { colors } = useTheme();
+    const { colors, mode, toggle } = useTheme();
     const opts = useMemo(() => ({
       headerStyle: { backgroundColor: colors.header },
       headerTitleStyle: { fontWeight: '800', color: colors.ink },
@@ -25,7 +25,7 @@ function mk(screens) {
       headerBackVisible: false,
       headerTitleAlign: 'center',
       contentStyle: { backgroundColor: colors.bg },
-    }), [colors]);
+    }), [colors, mode, toggle]);
     return (
       <Stack.Navigator screenOptions={opts}>
         {screens.map(([name, comp, title]) => <Stack.Screen key={name} name={name} component={comp} options={{ title }} />)}

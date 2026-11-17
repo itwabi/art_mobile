@@ -5,7 +5,6 @@ import { useTheme, useStyles, radius } from '../theme';
 import { useApp } from '../state';
 import { api } from '../api';
 
-// Общая форма «никнейм + пароль» для входа и регистрации
 function AuthForm({ navigation, mode }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
@@ -17,7 +16,6 @@ function AuthForm({ navigation, mode }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  // правила длины берём с сервера, чтобы не расходились с вебом
   useEffect(() => { if (isRegister) api.rules().then(setRules).catch(() => {}); }, [isRegister]);
 
   const submit = async () => {
@@ -33,7 +31,7 @@ function AuthForm({ navigation, mode }) {
     setError(null);
     try {
       await (isRegister ? register(nick, password) : login(nick, password));
-      navigation.popToTop(); // вход выполнен — ProfileHome сам покажет меню профиля
+      navigation.popToTop(); 
     } catch (e) {
       setError(e.message);
     } finally {

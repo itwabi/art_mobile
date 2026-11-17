@@ -1,6 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
 
-// Выбор фото из галереи телефона. Возвращает массив адресов (uri); если пользователь отменил — пустой массив.
 export async function pickPhotos({ multiple = true } = {}) {
   try {
     const res = await ImagePicker.launchImageLibraryAsync({

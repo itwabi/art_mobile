@@ -11,7 +11,6 @@ import { api } from '../api';
 const isWeb = Platform.OS === 'web';
 const BackBtn = ({ navigation }) => <Button title="Назад" onPress={() => navigation.goBack()} style={{ marginTop: 'auto' }} />;
 
-// Первый экран вкладки: гость или меню профиля в зависимости от входа
 export function ProfileHome(props) {
   const { loggedIn } = useApp();
   return loggedIn ? <ProfileMenu {...props} /> : <ProfileGuest {...props} />;
@@ -44,7 +43,6 @@ function ProfileMenu({ navigation }) {
         <View><Text style={{ fontSize: 20, fontWeight: '800', color: colors.ink }}>{user?.nickname}</Text><Text style={{ color: colors.muted }}>Серия: {user?.streak_days ?? 0} дн.</Text></View>
       </Card>
       <View style={{ gap: 10, marginTop: 8 }}>
-        {/* В вебе настройки приложения не нужны: тема переключается значком в углу, смена аккаунта — здесь */}
         {!isWeb && <ListRow icon="settings-outline" title="Настройки приложения" onPress={() => navigation.navigate('AppSettings')} />}
         <ListRow icon="trophy-outline" title="Ваши челленджи" onPress={() => navigation.navigate('MyChallenges')} />
         <ListRow icon="bookmark-outline" title="Сохраненные генерации" onPress={() => navigation.navigate('SavedGenerations')} />
@@ -107,13 +105,35 @@ export function SavedGenerations({ navigation }) {
   const { colors } = useTheme();
   const [list, setList] = useState(null);
   const [error, setError] = useState(null);
-  useFocusEffect(useCallback(() => {
-    api.generations().then((l) => { setList(l); setError(null); }).catch((e) => setError(e.message));
-  }, []));
-  if (error) return <Screen><Card><Text style={{ color: colors.accent, fontWeight: '600' }}>{error}</Text></Card><BackBtn navigation={navigation} /></Screen>;
+  const [deleting, setDeleting] = useState(null);
+
+  const load = useCallback(() => {
+    api.generations()
+      .then((items) => { setList(items); setError(null); })
+      .catch((e) => setError(e.message));
+  }, []);
+
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const remove = async (id) => {
+    setDeleting(id);
+    setError(null);
+    try {
+      await api.deleteGeneration(id);
+      setList((items) => (items || []).filter((item) => item.id !== id));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  if (error && !list) return <Screen><Card><Text style={{ color: colors.accent, fontWeight: '600' }}>{error}</Text></Card><BackBtn navigation={navigation} /></Screen>;
   if (!list) return <Screen><Text style={{ color: colors.muted, textAlign: 'center', marginTop: 40 }}>Загрузка…</Text></Screen>;
+
   return (
-    <Screen>
+    <Screen scroll>
+      {error ? <Text style={{ color: colors.accent, fontWeight: '600' }}>{error}</Text> : null}
       <View style={{ gap: 10 }}>
         {list.length === 0 && (
           <Card style={{ alignItems: 'center', paddingVertical: 28 }}>
@@ -121,9 +141,34 @@ export function SavedGenerations({ navigation }) {
           </Card>
         )}
         {list.map((g) => (
-          <Card key={g.id} style={s.listCard}>
-            <Text style={s.cardTitle}>{g.title}</Text>
-            <Button title="подробно" style={s.small} onPress={() => navigation.navigate('Generate', { screen: 'GenerateResult', params: { saved: g, topic: true, idea: true, palette: true } })} />
+          <Card key={g.id} style={{ gap: 12, padding: 14 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <Text style={[s.cardTitle, { flex: 1 }]}>{g.title}</Text>
+              <Button
+                title={deleting === g.id ? 'Удаление…' : 'Удалить'}
+                variant="danger"
+                style={s.small}
+                disabled={deleting !== null}
+                onPress={() => remove(g.id)}
+              />
+            </View>
+            {g.theme ? <View><Text style={s.metaLabel}>ТЕМА</Text><Text style={{ color: colors.ink }}>{g.theme}</Text></View> : null}
+            {g.idea ? <View><Text style={s.metaLabel}>ИДЕЯ</Text><Text style={{ color: colors.ink }}>{g.idea}</Text></View> : null}
+            {g.palette?.length ? (
+              <View style={{ gap: 6 }}>
+                <Text style={s.metaLabel}>ПАЛИТРА</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {g.palette.map((color, i) => (
+                    <View key={`${color}-${i}`} style={{ flex: 1, height: 34, borderRadius: 8, backgroundColor: color }} />
+                  ))}
+                </View>
+              </View>
+            ) : null}
+            <Button
+              title="Подробно"
+              style={s.small}
+              onPress={() => navigation.navigate('Generate', { screen: 'GenerateResult', params: { saved: g, topic: true, idea: true, palette: true } })}
+            />
           </Card>
         ))}
       </View>
@@ -223,13 +268,24 @@ export function MyWorks({ navigation }) {
   );
 }
 
-// Одна работа: просмотр фото альбома, теги, дата и удаление
 export function MyWork({ navigation, route }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
   const { works, removeWorks } = useApp();
-  const item = works.find((w) => w.id === route.params?.id);
+  const cachedItem = works.find((w) => w.id === route.params?.id);
+  const [remoteItem, setRemoteItem] = useState(null);
+  const item = remoteItem || cachedItem;
   const [viewer, setViewer] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    if (route.params?.id != null) {
+      api.galleryItem(route.params.id)
+        .then((fresh) => { if (active) setRemoteItem(fresh); })
+        .catch(() => {});
+    }
+    return () => { active = false; };
+  }, [route.params?.id]);
   const [confirm, setConfirm] = useState(false);
 
   useEffect(() => {
@@ -269,6 +325,7 @@ export function MyWork({ navigation, route }) {
 const makeStyles = (c) => StyleSheet.create({
   avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },
   listCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, paddingLeft: 18, borderRadius: radius.m },
+  metaLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.8, color: '#8A7F72' },
   cardTitle: { fontSize: 17, fontWeight: '700', color: c.ink, flex: 1 },
   small: { paddingVertical: 9, paddingHorizontal: 14 },
   count: { position: 'absolute', top: 5, left: 5, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
